@@ -547,12 +547,12 @@ func (c *Commander) GetBlockHash(height int64) (string, *btcjson.Error) {
 	return response.result.(string), nil
 }
 
-// GetBlock requests details about a block with the given hash.
-func (c *Commander) GetBlock(blockHash string, verbose, verboseTx bool) (*btcjson.BlockResult, *btcjson.Error) {
+// GetVerboseBlock requests details about a block with the given hash.
+func (c *Commander) GetVerboseBlock(blockHash string, verboseTx bool) (*btcjson.BlockResult, *btcjson.Error) {
 	rpc := c.currentRpcConn()
 
 	// NewGetBlockCmd cannot fail with no optargs, so omit the check.
-	cmd, err := btcjson.NewGetBlockCmd(<-c.newJSONID, blockHash, verbose, verboseTx)
+	cmd, err := btcjson.NewGetBlockCmd(<-c.newJSONID, blockHash, true, verboseTx)
 	if err != nil {
 		return nil, &btcjson.Error{
 			Code:    -1,
@@ -564,6 +564,25 @@ func (c *Commander) GetBlock(blockHash string, verbose, verboseTx bool) (*btcjso
 		return nil, response.err
 	}
 	return response.result.(*btcjson.BlockResult), nil
+}
+
+// GetBlock requests details about a block with the given hash.
+func (c *Commander) GetRawBlock(blockHash string) (string, *btcjson.Error) {
+	rpc := c.currentRpcConn()
+
+	// NewGetBlockCmd cannot fail with no optargs, so omit the check.
+	cmd, err := btcjson.NewGetBlockCmd(<-c.newJSONID, blockHash, false)
+	if err != nil {
+		return "", &btcjson.Error{
+			Code:    -1,
+			Message: err.Error(),
+		}
+	}
+	response := <-rpc.sendRequest(cmd, nil)
+	if response.err != nil {
+		return "", response.err
+	}
+	return response.result.(string), nil
 }
 
 // GetRawTransaction gets raw transaction details from btcd for the given txid

@@ -42,12 +42,19 @@ func main() {
 	c := btcdcommander.NewCommander(cfg, listener)
 	c.Start()
 
+	blockHash := "0000000000000000323cf200defd71ffc41dba822e19a544e8c32ce19479fe21"
 	log.Printf("Getting block")
-	block, err := c.GetBlock("0000000000000000323cf200defd71ffc41dba822e19a544e8c32ce19479fe21", true, true)
+	block, err := c.GetVerboseBlock(blockHash, true)
 	if err != nil {
-		log.Printf("Received Error on Get Block: err=%v", err)
+		log.Printf("Received Error on Get Verbose Block: err=%v", err)
 	}
-	log.Printf("Get Block: height=%v, numTxns=%v", block.Height, len(block.RawTx))
+	log.Printf("Get Verbose Block: height=%v, numTxns=%v", block.Height, len(block.RawTx))
+
+	rawBlock, err := c.GetRawBlock(blockHash)
+	if err != nil {
+		log.Printf("Received Error on Get Raw Block: err=%v", err)
+	}
+	log.Printf("Get Raw Block: blockHex=%s", rawBlock)
 
 	log.Printf("Getting Raw Tx")
 	tx, err := c.GetRawTransaction("bc4c9e3465c5583e8cba7e858476dad13b195755bffd14185cfee7fb5e3bb43e", 1)
@@ -55,6 +62,7 @@ func main() {
 		log.Printf("Received Error on Get Raw Transaction: err=%v", err)
 	}
 	log.Printf("Got Transaction: %#v", tx)
+
 	c.Stop()
 }
 ```
