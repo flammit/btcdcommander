@@ -565,3 +565,22 @@ func (c *Commander) GetBlock(blockHash string, verbose, verboseTx bool) (*btcjso
 	}
 	return response.result.(*btcjson.BlockResult), nil
 }
+
+// GetRawTransaction gets raw transaction details from btcd for the given txid
+func (c *Commander) GetRawTransaction(txid string, verbose int) (*btcjson.TxRawResult, *btcjson.Error) {
+	rpc := c.currentRpcConn()
+
+	// NewGetBlockCmd cannot fail with no optargs, so omit the check.
+	cmd, err := btcjson.NewGetRawTransactionCmd(<-c.newJSONID, txid, verbose)
+	if err != nil {
+		return nil, &btcjson.Error{
+			Code:    -1,
+			Message: err.Error(),
+		}
+	}
+	response := <-rpc.sendRequest(cmd, new(btcjson.TxRawResult))
+	if response.err != nil {
+		return nil, response.err
+	}
+	return response.result.(*btcjson.TxRawResult), nil
+}
