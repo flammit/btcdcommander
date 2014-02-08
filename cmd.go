@@ -47,6 +47,8 @@ type NotificationListener interface {
 	BtcdDisconnected()
 	BlockConnected(blockHash string)
 	BlockDisconnected(blockHash string)
+	AddedTransaction(txId string, amount int64)
+	AddedTransactionVerbose(rawTx *btcjson.TxRawResult)
 }
 
 type Commander struct {
@@ -143,6 +145,18 @@ func (btcd *rpcConn) notifyListener(cmd btcjson.Cmd) {
 			return
 		}
 		btcd.listener.BlockDisconnected(bdn.Hash)
+	case btcws.AllTxNtfnMethod:
+		tx, ok := cmd.(*btcws.AllTxNtfn)
+		if !ok {
+			return
+		}
+		btcd.listener.AddedTransaction(tx.TxID, tx.Amount)
+	case btcws.AllVerboseTxNtfnMethod:
+		vtx, ok := cmd.(*btcws.AllVerboseTxNtfn)
+		if !ok {
+			return
+		}
+		btcd.listener.AddedTransactionVerbose(vtx.RawTx)
 	default:
 		break
 	}
@@ -508,6 +522,14 @@ func (c *Commander) GetCurrentNet() (btcwire.BitcoinNet, *btcjson.Error) {
 func (c *Commander) NotifyBlocks() *btcjson.Error {
 	rpc := c.currentRpcConn()
 	cmd := btcws.NewNotifyBlocksCmd(<-c.newJSONID)
+	response := <-rpc.sendRequest(cmd, nil)
+	return response.err
+}
+
+// NotifyAllNewTxs requests all transaction notifications
+func (c *Commander) NotifyAllNewTxs(verbose bool) *btcjson.Error {
+	rpc := c.currentRpcConn()
+	cmd := btcws.NewNotifyAllNewTXsCmd(<-c.newJSONID, verbose)
 	response := <-rpc.sendRequest(cmd, nil)
 	return response.err
 }
