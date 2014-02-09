@@ -53,12 +53,13 @@ type NotificationListener interface {
 
 type Commander struct {
 	cfg           *Config
-	listener      NotificationListener
 	newJSONID     chan uint64
 	lastJSONID    uint64
 	rpc           *rpcConn
 	accessRpcConn chan *AccessCurrentRpcConn
 	running       bool
+	newNtfn       chan btcjson.Cmd
+	clientNtfn    chan btcjson.Cmd
 }
 
 type ServerRequest struct {
@@ -81,7 +82,7 @@ type rpcConn struct {
 	ws         *websocket.Conn
 	addRequest chan *addRPCRequest
 	closed     chan struct{}
-	listener   NotificationListener
+	commander  *Commander
 }
 
 func (btcd *rpcConn) connected() bool {
@@ -131,37 +132,6 @@ func (btcd *rpcConn) send(sr *ServerRequest) error {
 	return websocket.Message.Send(btcd.ws, mrequest)
 }
 
-func (btcd *rpcConn) notifyListener(cmd btcjson.Cmd) {
-	switch cmd.Method() {
-	case btcws.BlockConnectedNtfnMethod:
-		bcn, ok := cmd.(*btcws.BlockConnectedNtfn)
-		if !ok {
-			return
-		}
-		btcd.listener.BlockConnected(bcn.Hash)
-	case btcws.BlockDisconnectedNtfnMethod:
-		bdn, ok := cmd.(*btcws.BlockDisconnectedNtfn)
-		if !ok {
-			return
-		}
-		btcd.listener.BlockDisconnected(bdn.Hash)
-	case btcws.AllTxNtfnMethod:
-		tx, ok := cmd.(*btcws.AllTxNtfn)
-		if !ok {
-			return
-		}
-		btcd.listener.AddedTransaction(tx.TxID, tx.Amount)
-	case btcws.AllVerboseTxNtfnMethod:
-		vtx, ok := cmd.(*btcws.AllVerboseTxNtfn)
-		if !ok {
-			return
-		}
-		btcd.listener.AddedTransactionVerbose(vtx.RawTx)
-	default:
-		break
-	}
-}
-
 type receivedResponse struct {
 	id    uint64
 	raw   string
@@ -171,7 +141,6 @@ type receivedResponse struct {
 func (btcd *rpcConn) start() {
 	done := btcd.closed
 	responses := make(chan *receivedResponse)
-	notifications := make(chan btcjson.Cmd)
 
 	// Maintain a map of JSON IDs to RPCRequests currently being waited on.
 	go func() {
@@ -221,9 +190,6 @@ func (btcd *rpcConn) start() {
 				}
 				rpcrequest.response <- response
 
-			case recvNotification := <-notifications:
-				btcd.notifyListener(recvNotification)
-
 			case <-done:
 				for _, request := range m {
 					response := &ServerResponse{
@@ -249,7 +215,7 @@ func (btcd *rpcConn) start() {
 
 			n, err := unmarshalNotification(m)
 			if err == nil {
-				notifications <- n
+				btcd.commander.newNtfn <- n
 				continue
 			}
 
@@ -305,8 +271,8 @@ func unmarshalNotification(s string) (btcjson.Cmd, error) {
 	return req, nil
 }
 
-func newBtcdRpcConn(cfg *Config, listener NotificationListener) (*rpcConn, error) {
-	ws, err := newBtcdWS(cfg)
+func newBtcdRpcConn(c *Commander) (*rpcConn, error) {
+	ws, err := newBtcdWS(c.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +281,7 @@ func newBtcdRpcConn(cfg *Config, listener NotificationListener) (*rpcConn, error
 		ws:         ws,
 		addRequest: make(chan *addRPCRequest),
 		closed:     make(chan struct{}),
-		listener:   listener,
+		commander:  c,
 	}
 	r.start()
 	return r, nil
@@ -372,13 +338,18 @@ func newBtcdWS(cfg *Config) (*websocket.Conn, error) {
 	return ws, nil
 }
 
-func NewCommander(cfg *Config, listener NotificationListener) *Commander {
+func NewCommander(cfg *Config) *Commander {
 	c := &Commander{
 		cfg:        cfg,
-		listener:   listener,
 		lastJSONID: 1,
+		newNtfn:    make(chan btcjson.Cmd),
+		clientNtfn: make(chan btcjson.Cmd),
 	}
 	return c
+}
+
+func (c *Commander) NtfnChan() chan btcjson.Cmd {
+	return c.clientNtfn
 }
 
 // Start dials to create and rpcConn and automatically reconnects to BTCD
@@ -395,6 +366,7 @@ func (c *Commander) Start() {
 	c.running = true
 	c.accessRpcConn = make(chan *AccessCurrentRpcConn)
 	updateBtcd := make(chan *rpcConn)
+
 	// run goroutine that controls access to Commander's current rpc
 	go func() {
 		c.rpc = nil
@@ -412,11 +384,43 @@ func (c *Commander) Start() {
 		}
 	}()
 
+	// Queue and deliver notifications to commander client
+	go func() {
+		ntfnQueue := make([]btcjson.Cmd, 0)
+		unreadChan := make(chan btcjson.Cmd)
+
+		for {
+			var ntfnOut chan btcjson.Cmd
+			var oldestNtfn btcjson.Cmd
+			if len(ntfnQueue) > 0 {
+				ntfnOut = c.clientNtfn
+				oldestNtfn = ntfnQueue[0]
+			} else {
+				ntfnOut = unreadChan
+			}
+
+			select {
+			case n := <-c.newNtfn:
+				ntfnQueue = append(ntfnQueue, n)
+
+			case ntfnOut <- oldestNtfn:
+				ntfnQueue = ntfnQueue[1:]
+
+			case <-c.clientNtfn:
+				return
+			}
+		}
+	}()
+
 	finishedInit := make(chan struct{})
 	// run reconnect loop
 	go func() {
 		for {
-			btcd, err := newBtcdRpcConn(c.cfg, c.listener)
+			if !c.running {
+				break
+			}
+
+			btcd, err := newBtcdRpcConn(c)
 			if err != nil {
 				log.Info("Retrying btcd connection in 5 seconds")
 				time.Sleep(5 * time.Second)
@@ -424,7 +428,7 @@ func (c *Commander) Start() {
 			}
 			updateBtcd <- btcd
 
-			c.listener.BtcdConnected()
+			c.newNtfn <- &BtcdConnectedNtfn{}
 			log.Info("Established connection to btcd")
 
 			// Perform handshake.
@@ -449,11 +453,8 @@ func (c *Commander) Start() {
 
 			// Block goroutine until the connection is lost.
 			<-btcd.closed
-			c.listener.BtcdDisconnected()
+			c.newNtfn <- &BtcdDisconnectedNtfn{}
 			log.Info("Lost btcd connection")
-			if !c.running {
-				break
-			}
 		}
 	}()
 
@@ -463,11 +464,11 @@ func (c *Commander) Start() {
 // Stop terminates current connection and the reconnect loop to BTCD
 func (c *Commander) Stop() {
 	c.running = false
+	close(c.clientNtfn)
 
 	rpcConn := c.currentRpcConn()
 	if rpcConn != nil && rpcConn.connected() {
 		rpcConn.ws.Close()
-		close(rpcConn.closed)
 	}
 }
 
@@ -529,7 +530,9 @@ func (c *Commander) NotifyBlocks() *btcjson.Error {
 // NotifyAllNewTxs requests all transaction notifications
 func (c *Commander) NotifyAllNewTxs(verbose bool) *btcjson.Error {
 	rpc := c.currentRpcConn()
-	cmd := btcws.NewNotifyAllNewTXsCmd(<-c.newJSONID, verbose)
+
+	// error not possible with single argument
+	cmd, _ := btcws.NewNotifyAllNewTXsCmd(<-c.newJSONID, verbose)
 	response := <-rpc.sendRequest(cmd, nil)
 	return response.err
 }
