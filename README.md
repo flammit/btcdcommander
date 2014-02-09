@@ -22,7 +22,7 @@ func main() {
 		Password:   "yourpassword",
 		MainNet:    true,
 	}
-	
+
 	c := btcdcommander.NewCommander(cfg)
 
 	go func() {
@@ -36,6 +36,10 @@ func main() {
 			switch cmd.Method() {
 			case btcdcommander.BtcdConnectedNtfnMethod:
 				log.Printf("BTCD CONNECTED")
+				err := c.NotifyAllNewTxs(false)
+				if err != nil {
+					log.Printf("Received Error on NotifyAllNewTxs: err=%v", err)
+				}
 			case btcdcommander.BtcdDisconnectedNtfnMethod:
 				log.Printf("BTCD DISCONNECTED")
 			case btcws.BlockConnectedNtfnMethod:
@@ -76,11 +80,6 @@ func main() {
 
 	c.Start()
 	log.Printf("Finished Start")
-
-	err := c.NotifyAllNewTxs(false)
-	if err != nil {
-		log.Printf("Received Error on NotifyAllNewTxs: err=%v", err)
-	}
 
 	log.Printf("Getting block")
 	block, err := c.GetVerboseBlock("0000000000000000323cf200defd71ffc41dba822e19a544e8c32ce19479fe21", true)
