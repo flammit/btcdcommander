@@ -50,16 +50,16 @@ func (c *Config) Net() btcwire.BitcoinNet {
 func (c *Config) SetNet(net btcwire.BitcoinNet) {
 	switch net {
 	case btcwire.TestNet:
-		cfg.MainNet = false
-		cfg.RegTest = true
+		c.MainNet = false
+		c.RegTest = true
 	case btcwire.TestNet3:
-		cfg.MainNet = false
-		cfg.RegTest = false
+		c.MainNet = false
+		c.RegTest = false
 	case btcwire.MainNet:
 		fallthrough
 	default:
-		cfg.MainNet = true
-		cfg.RegTest = false
+		c.MainNet = true
+		c.RegTest = false
 	}
 }
 
