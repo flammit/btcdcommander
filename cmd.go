@@ -33,13 +33,34 @@ type Config struct {
 	ProxyUser  string
 	ProxyPass  string
 	MainNet    bool
+	RegTest    bool
 }
 
 func (c *Config) Net() btcwire.BitcoinNet {
+	if c.RegTest {
+		return btcwire.TestNet
+	}
+
 	if c.MainNet {
 		return btcwire.MainNet
 	}
 	return btcwire.TestNet3
+}
+
+func (c *Config) SetNet(net btcwire.BitcoinNet) {
+	switch net {
+	case btcwire.TestNet:
+		cfg.MainNet = false
+		cfg.RegTest = true
+	case btcwire.TestNet3:
+		cfg.MainNet = false
+		cfg.RegTest = false
+	case btcwire.MainNet:
+		fallthrough
+	default:
+		cfg.MainNet = true
+		cfg.RegTest = false
+	}
 }
 
 type NotificationListener interface {
@@ -422,7 +443,7 @@ func (c *Commander) Start() {
 
 			btcd, err := newBtcdRpcConn(c)
 			if err != nil {
-				log.Info("Retrying btcd connection in 5 seconds")
+				log.Info("Retrying btcd connection in 5 seconds: error=%v", err)
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -636,4 +657,24 @@ func (c *Commander) GetRawTransaction(txid string, verbose int) (*btcjson.TxRawR
 		return nil, response.err
 	}
 	return response.result.(*btcjson.TxRawResult), nil
+}
+
+func (c *Commander) SubmitBlock(blockHex string) (interface{}, *btcjson.Error) {
+	rpc := c.currentRpcConn()
+
+	// NewGetBlockCmd cannot fail with no optargs, so omit the check.
+	cmd, err := btcjson.NewSubmitBlockCmd(<-c.newJSONID, blockHex)
+	if err != nil {
+		return nil, &btcjson.Error{
+			Code:    -1,
+			Message: err.Error(),
+		}
+	}
+	response := <-rpc.sendRequest(cmd, "")
+	log.Infof("Submitted Block, got response: %#v, response.result: %#v",
+		response, response.result)
+	if response.err != nil {
+		return nil, response.err
+	}
+	return response.result, nil
 }
