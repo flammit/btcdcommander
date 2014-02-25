@@ -671,8 +671,6 @@ func (c *Commander) SubmitBlock(blockHex string) (interface{}, *btcjson.Error) {
 		}
 	}
 	response := <-rpc.sendRequest(cmd, "")
-	log.Infof("Submitted Block, got response: %#v, response.result: %#v",
-		response, response.result)
 	if response.err != nil {
 		return nil, response.err
 	}
