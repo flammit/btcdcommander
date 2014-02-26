@@ -73,7 +73,7 @@ type NotificationListener interface {
 }
 
 type Commander struct {
-	cfg           *Config
+	Cfg           *Config
 	newJSONID     chan uint64
 	lastJSONID    uint64
 	rpc           *rpcConn
@@ -293,7 +293,7 @@ func unmarshalNotification(s string) (btcjson.Cmd, error) {
 }
 
 func newBtcdRpcConn(c *Commander) (*rpcConn, error) {
-	ws, err := newBtcdWS(c.cfg)
+	ws, err := newBtcdWS(c.Cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +361,7 @@ func newBtcdWS(cfg *Config) (*websocket.Conn, error) {
 
 func NewCommander(cfg *Config) *Commander {
 	c := &Commander{
-		cfg:        cfg,
+		Cfg:        cfg,
 		lastJSONID: 1,
 		newNtfn:    make(chan btcjson.Cmd),
 		clientNtfn: make(chan btcjson.Cmd),
@@ -516,7 +516,7 @@ func (c *Commander) handshake() error {
 	if jsonErr != nil {
 		return jsonErr
 	}
-	if net != c.cfg.Net() {
+	if net != c.Cfg.Net() {
 		return errors.New("btcd and btcwallet running on different Bitcoin networks")
 	}
 
@@ -572,6 +572,13 @@ type GetBestBlockResult struct {
 	Height int32  `json:"height"`
 }
 
+func newJsonError(err error) *btcjson.Error {
+	return &btcjson.Error{
+		Code:    -1,
+		Message: err.Error(),
+	}
+}
+
 // GetBestBlock gets both the block height and hash of the best block
 // in the main chain.
 func (c *Commander) GetBestBlock() (*GetBestBlockResult, *btcjson.Error) {
@@ -590,10 +597,7 @@ func (c *Commander) GetBlockHash(height int64) (string, *btcjson.Error) {
 	rpc := c.currentRpcConn()
 	cmd, err := btcjson.NewGetBlockHashCmd(<-c.newJSONID, height)
 	if err != nil {
-		return "", &btcjson.Error{
-			Code:    -1,
-			Message: err.Error(),
-		}
+		return "", newJsonError(err)
 	}
 	response := <-rpc.sendRequest(cmd, nil)
 	if response.err != nil {
@@ -606,13 +610,9 @@ func (c *Commander) GetBlockHash(height int64) (string, *btcjson.Error) {
 func (c *Commander) GetVerboseBlock(blockHash string, verboseTx bool) (*btcjson.BlockResult, *btcjson.Error) {
 	rpc := c.currentRpcConn()
 
-	// NewGetBlockCmd cannot fail with no optargs, so omit the check.
 	cmd, err := btcjson.NewGetBlockCmd(<-c.newJSONID, blockHash, true, verboseTx)
 	if err != nil {
-		return nil, &btcjson.Error{
-			Code:    -1,
-			Message: err.Error(),
-		}
+		return nil, newJsonError(err)
 	}
 	response := <-rpc.sendRequest(cmd, new(btcjson.BlockResult))
 	if response.err != nil {
@@ -625,13 +625,9 @@ func (c *Commander) GetVerboseBlock(blockHash string, verboseTx bool) (*btcjson.
 func (c *Commander) GetRawBlock(blockHash string) (string, *btcjson.Error) {
 	rpc := c.currentRpcConn()
 
-	// NewGetBlockCmd cannot fail with no optargs, so omit the check.
 	cmd, err := btcjson.NewGetBlockCmd(<-c.newJSONID, blockHash, false)
 	if err != nil {
-		return "", &btcjson.Error{
-			Code:    -1,
-			Message: err.Error(),
-		}
+		return "", newJsonError(err)
 	}
 	response := <-rpc.sendRequest(cmd, nil)
 	if response.err != nil {
@@ -644,13 +640,9 @@ func (c *Commander) GetRawBlock(blockHash string) (string, *btcjson.Error) {
 func (c *Commander) GetRawTransaction(txid string, verbose int) (*btcjson.TxRawResult, *btcjson.Error) {
 	rpc := c.currentRpcConn()
 
-	// NewGetBlockCmd cannot fail with no optargs, so omit the check.
 	cmd, err := btcjson.NewGetRawTransactionCmd(<-c.newJSONID, txid, verbose)
 	if err != nil {
-		return nil, &btcjson.Error{
-			Code:    -1,
-			Message: err.Error(),
-		}
+		return nil, newJsonError(err)
 	}
 	response := <-rpc.sendRequest(cmd, new(btcjson.TxRawResult))
 	if response.err != nil {
@@ -659,20 +651,44 @@ func (c *Commander) GetRawTransaction(txid string, verbose int) (*btcjson.TxRawR
 	return response.result.(*btcjson.TxRawResult), nil
 }
 
+func (c *Commander) GetRawMempool() ([]string, *btcjson.Error) {
+	rpc := c.currentRpcConn()
+
+	cmd, err := btcjson.NewGetRawMempoolCmd(<-c.newJSONID)
+	if err != nil {
+		return nil, newJsonError(err)
+	}
+	response := <-rpc.sendRequest(cmd, []string{})
+	if response.err != nil {
+		return nil, response.err
+	}
+	return response.result.([]string), nil
+}
+
 func (c *Commander) SubmitBlock(blockHex string) (interface{}, *btcjson.Error) {
 	rpc := c.currentRpcConn()
 
-	// NewGetBlockCmd cannot fail with no optargs, so omit the check.
 	cmd, err := btcjson.NewSubmitBlockCmd(<-c.newJSONID, blockHex)
 	if err != nil {
-		return nil, &btcjson.Error{
-			Code:    -1,
-			Message: err.Error(),
-		}
+		return nil, newJsonError(err)
 	}
 	response := <-rpc.sendRequest(cmd, "")
 	if response.err != nil {
 		return nil, response.err
 	}
 	return response.result, nil
+}
+
+func (c *Commander) SendRawTransaction(txHex string) (string, *btcjson.Error) {
+	rpc := c.currentRpcConn()
+
+	cmd, err := btcjson.NewSendRawTransactionCmd(<-c.newJSONID, txHex)
+	if err != nil {
+		return "", newJsonError(err)
+	}
+	response := <-rpc.sendRequest(cmd, "")
+	if response.err != nil {
+		return "", response.err
+	}
+	return response.result.(string), nil
 }
