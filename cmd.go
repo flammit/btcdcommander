@@ -636,11 +636,26 @@ func (c *Commander) GetRawBlock(blockHash string) (string, *btcjson.Error) {
 	return response.result.(string), nil
 }
 
-// GetRawTransaction gets raw transaction details from btcd for the given txid
-func (c *Commander) GetRawTransaction(txid string, verbose int) (*btcjson.TxRawResult, *btcjson.Error) {
+// GetRawTransaction gets transaction hex from btcd for the given txid
+func (c *Commander) GetRawTransaction(txid string) (string, *btcjson.Error) {
 	rpc := c.currentRpcConn()
 
-	cmd, err := btcjson.NewGetRawTransactionCmd(<-c.newJSONID, txid, verbose)
+	cmd, err := btcjson.NewGetRawTransactionCmd(<-c.newJSONID, txid, 0)
+	if err != nil {
+		return "", newJsonError(err)
+	}
+	response := <-rpc.sendRequest(cmd, "")
+	if response.err != nil {
+		return "", response.err
+	}
+	return response.result.(string), nil
+}
+
+// GetVerboseTransaction gets verbose transaction details from btcd for the given txid
+func (c *Commander) GetVerboseTransaction(txid string) (*btcjson.TxRawResult, *btcjson.Error) {
+	rpc := c.currentRpcConn()
+
+	cmd, err := btcjson.NewGetRawTransactionCmd(<-c.newJSONID, txid, 1)
 	if err != nil {
 		return nil, newJsonError(err)
 	}
@@ -658,11 +673,16 @@ func (c *Commander) GetRawMempool() ([]string, *btcjson.Error) {
 	if err != nil {
 		return nil, newJsonError(err)
 	}
-	response := <-rpc.sendRequest(cmd, []string{})
+	response := <-rpc.sendRequest(cmd, nil)
 	if response.err != nil {
 		return nil, response.err
 	}
-	return response.result.([]string), nil
+	responseArr := response.result.([]interface{})
+	txShas := make([]string, len(responseArr))
+	for i, e := range responseArr {
+		txShas[i] = e.(string)
+	}
+	return txShas, nil
 }
 
 func (c *Commander) SubmitBlock(blockHex string) (interface{}, *btcjson.Error) {

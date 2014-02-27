@@ -89,9 +89,9 @@ func main() {
 	log.Printf("Get Block: height=%v, numTxns=%v", block.Height, len(block.RawTx))
 
 	log.Printf("Getting Raw TX")
-	tx, err := c.GetRawTransaction("bc4c9e3465c5583e8cba7e858476dad13b195755bffd14185cfee7fb5e3bb43e", 1)
+	tx, err := c.GetVerboseTransaction("bc4c9e3465c5583e8cba7e858476dad13b195755bffd14185cfee7fb5e3bb43e")
 	if err != nil {
-		log.Printf("Received Error on Get Raw Transaction: err=%v", err)
+		log.Printf("Received Error on Get Verbose Transaction: err=%v", err)
 	}
 	log.Printf("Got Transaction: %#v", tx)
 
