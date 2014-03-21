@@ -36,7 +36,7 @@ func main() {
 			switch cmd.Method() {
 			case btcdcommander.BtcdConnectedNtfnMethod:
 				log.Printf("BTCD CONNECTED")
-				err := c.NotifyAllNewTxs(false)
+				err := c.NotifyAllNewTXs(false)
 				if err != nil {
 					log.Printf("Received Error on NotifyAllNewTxs: err=%v", err)
 				}
