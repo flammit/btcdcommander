@@ -34,14 +34,20 @@ func main() {
 			}
 
 			switch cmd.Method() {
-			case btcdcommander.BtcdConnectedNtfnMethod:
-				log.Printf("BTCD CONNECTED")
-				err := c.NotifyAllNewTXs(false)
-				if err != nil {
-					log.Printf("Received Error on NotifyAllNewTxs: err=%v", err)
+			case btcws.BtcdConnectedNtfnMethod:
+				btcdn, ok := cmd.(*btcws.BtcdConnectedNtfn)
+				if !ok {
+					return
 				}
-			case btcdcommander.BtcdDisconnectedNtfnMethod:
-				log.Printf("BTCD DISCONNECTED")
+				if btcdn.Connected {
+					log.Printf("BTCD CONNECTED")
+					err := c.NotifyAllNewTXs(false)
+					if err != nil {
+						log.Printf("Received Error on NotifyAllNewTxs: err=%v", err)
+					}
+				} else {
+					log.Printf("BTCD DISCONNECTED")
+				}
 			case btcws.BlockConnectedNtfnMethod:
 				bcn, ok := cmd.(*btcws.BlockConnectedNtfn)
 				if !ok {
@@ -101,4 +107,5 @@ func main() {
 
 	c.Stop()
 }
+
 ```

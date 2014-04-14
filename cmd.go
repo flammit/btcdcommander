@@ -449,7 +449,7 @@ func (c *Commander) Start() {
 			}
 			updateBtcd <- btcd
 
-			c.newNtfn <- &BtcdConnectedNtfn{}
+			c.newNtfn <- &btcws.BtcdConnectedNtfn{true}
 			log.Info("Established connection to btcd")
 
 			// Perform handshake.
@@ -474,7 +474,7 @@ func (c *Commander) Start() {
 
 			// Block goroutine until the connection is lost.
 			<-btcd.closed
-			c.newNtfn <- &BtcdDisconnectedNtfn{}
+			c.newNtfn <- &btcws.BtcdConnectedNtfn{false}
 			log.Info("Lost btcd connection")
 		}
 	}()
