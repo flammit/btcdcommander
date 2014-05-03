@@ -548,21 +548,12 @@ func (c *Commander) NotifyBlocks() *btcjson.Error {
 	return response.err
 }
 
-// NotifyAllNewTxs requests all transaction notifications
-func (c *Commander) NotifyAllNewTXs(verbose bool) *btcjson.Error {
+// NotifyNewTransactions requests all transaction notifications
+func (c *Commander) NotifyNewTransactions(verbose bool) *btcjson.Error {
 	rpc := c.currentRpcConn()
 
 	// error not possible with single argument
-	cmd, _ := btcws.NewNotifyAllNewTXsCmd(<-c.newJSONID, verbose)
-	response := <-rpc.sendRequest(cmd, nil)
-	return response.err
-}
-
-// NotifyNewTXs requests notifications for transactions on the given addresses
-func (c *Commander) NotifyNewTXs(addresses []string) *btcjson.Error {
-	rpc := c.currentRpcConn()
-
-	cmd := btcws.NewNotifyNewTXsCmd(<-c.newJSONID, addresses)
+	cmd, _ := btcws.NewNotifyNewTransactionsCmd(<-c.newJSONID, verbose)
 	response := <-rpc.sendRequest(cmd, nil)
 	return response.err
 }
